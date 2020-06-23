@@ -57,29 +57,40 @@ internal class AggregateTest {
                 reviews.add(Review(it.innerText().trim(), it.getAttribute("href") ?: throw Exception("pr url이 없으면 안됨")))
             }
 
+
             reviews.forEach { review ->
                 open(review.reviewPrUrl)
 
-                `$$`("div.review-comment-contents.js-suggested-changes-contents").filter {
-                    it.find("strong").innerText().trim() == memberId
-                }.forEach {
-                    println(it.find(".comment-body markdown-body.js-comment-body").innerText())
+//                review.comments = `$$`("div.review-comment-contents.js-suggested-changes-contents").filter {
+//                    it.find("strong").innerText().trim() == memberId
+//                }.map {
+//                    it.find(".comment-body.markdown-body.js-comment-body").innerText()
+//                }
+
+
+                val reviewComments = mutableListOf<String>()
+                // show outdated
+                `$$`("span[title='Label: Outdated']").forEach { outdated ->
+                    outdated.click()
+
+                    val reviewComment = outdated.parent().parent().findAll("div.review-comment-contents.js-suggested-changes-contents")
+                        .filter { it.find("h4 strong a").text == memberId }
+                        .map {
+                            val id = it.find("h4 strong a").text
+                            println("여긴 들어오고 있는거 맞냐?  ${id}")
+                            it.find("div.comment-body p").innerText().trim()
+                        }
+
+                    reviewComments.addAll(reviewComment)
                 }
 
+//                val map = `$$`("div.review-comment-contents.js-suggested-changes-contents")
+//                    .filter { it.find("h4 strong a").text == memberId }
+//                    .map { it.find("div.comment-body p").innerText().trim() }
 
-                val comments = `$$`(".author.text-inherit.css-truncate-target").filter {
-                    it.text == memberId
-                }.filter {
-                    it.parent().parent().tagName == "h4"
-                }.map {
-                    val comment =
-                        it.parent().parent().parent().find("div.comment-body.markdown-body.js-comment-body")
-                            .innerText().trim()
-                    println(comment)
-                    comment
-                }
 
-                review.comments = comments
+                review.comments = reviewComments
+
                 println("aa)")
             }
 
