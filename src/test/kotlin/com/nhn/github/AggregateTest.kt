@@ -74,7 +74,11 @@ internal class AggregateTest {
                     outdated.click()
 
                     val reviewComment = outdated.parent().parent().findAll("div.review-comment-contents.js-suggested-changes-contents")
-                        .filter { it.find("h4 strong a").text == memberId }
+                        .filter {
+                            val text = it.find("h4 strong a").text
+                            println("제발좀 들어와라 ${text}")
+                            text == memberId
+                        }
                         .map {
                             val id = it.find("h4 strong a").text
                             println("여긴 들어오고 있는거 맞냐?  ${id}")
