@@ -170,6 +170,8 @@ internal class AggregateTest {
 
             val plusMarkerCount = `$$`("td.blob-code.blob-code-deletion.blob-code-marker-cell").size
             val minusMarkerCount = `$$`("td.blob-code.blob-code-addition.blob-code-marker-cell").size
+            // 이부분 위쪽에 changed file로 변경하자
+            
             it.modifiedLineCount = plusMarkerCount + minusMarkerCount
         }
 
