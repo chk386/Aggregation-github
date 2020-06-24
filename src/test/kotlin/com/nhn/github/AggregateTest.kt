@@ -1,10 +1,12 @@
 package com.nhn.github
 
+import com.codeborne.selenide.Selenide
 import com.codeborne.selenide.Selenide.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.openqa.selenium.By
 import java.time.LocalDate
+import kotlin.math.min
 
 /**
  * @author haekyu cho
@@ -37,76 +39,86 @@ internal class AggregateTest {
     @Test
     fun aggregateGithubActivities() {
         // todo: members를 순회하여 적용
-
-        val activities: MutableList<Activity> = mutableListOf()
-
-        for (x in from..to) {
-            println("================================== $x 월 ======================")
-            val month = x.toString().padStart(2, '0')
+        val activities = (from..to).map { month ->
+            val monthText = month.toString().padStart(2, '0')
             // fixme : memberId -> member[x]
-            val memberGithubUrl = "${domain}${memberId}?tab=overview&from=${year}-${month}-01&to=${year}-${month}-31"
+            val memberGithubUrl =
+                "${domain}${memberId}?tab=overview&from=${year}-${monthText}-01&to=${year}-${monthText}-31"
 //            open("$domain${members[0].id}?tab=overview&from=2020-01-01&to=2020-06-30")
 
-//            val memberCommitLogs = extractCommitLogs()
-//            val pullRequests = extractPullRequests(memberGithubUrl)
-
-            val reviews = mutableListOf<Review>()
-
-            open(memberGithubUrl)
-            `$`(".octicon.octicon-eye").parent().parent().findAll("a").forEach {
-                reviews.add(Review(it.innerText().trim(), it.getAttribute("href") ?: throw Exception("pr url이 없으면 안됨")))
-            }
-
-
-            reviews.forEach { review ->
-                open(review.reviewPrUrl)
-
-//                review.comments = `$$`("div.review-comment-contents.js-suggested-changes-contents").filter {
-//                    it.find("strong").innerText().trim() == memberId
-//                }.map {
-//                    it.find(".comment-body.markdown-body.js-comment-body").innerText()
-//                }
-
-
-                val reviewComments = mutableListOf<String>()
-                // show outdated
-                `$$`("span[title='Label: Outdated']").forEach { outdated ->
-                    outdated.click()
-
-                    val reviewComment = outdated.parent().parent().findAll("div.review-comment-contents.js-suggested-changes-contents")
-                        .filter {
-                            val text = it.find("h4 strong a").text
-                            println("제발좀 들어와라 ${text}")
-                            text == memberId
-                        }
-                        .map {
-                            val id = it.find("h4 strong a").text
-                            println("여긴 들어오고 있는거 맞냐?  ${id}")
-                            it.find("div.comment-body p").innerText().trim()
-                        }
-
-                    reviewComments.addAll(reviewComment)
+            // 맴버의 overview화면에서 본인이 작성한 review url, title정보를 추출한다.
+            Activity(month).also {
+                it.commitLogs = extractCommitLogs(memberGithubUrl)
+                    .also {
+                    it.forEach { x ->
+                        println("${x.commitUrl}, line : ${x.modifiedLineCount}")
+                    }
                 }
 
-//                val map = `$$`("div.review-comment-contents.js-suggested-changes-contents")
-//                    .filter { it.find("h4 strong a").text == memberId }
-//                    .map { it.find("div.comment-body p").innerText().trim() }
+                it.pullRequests = extractPullRequests(memberGithubUrl).also {
+                    it.forEach { x ->
+                        println("${x.prTitle} : ${x.prTitle}")
+                    }
+                }
 
-
-                review.comments = reviewComments
-
-                println("aa)")
+                it.reviews = extractReviews(memberGithubUrl).also {
+                    it.forEach { x ->
+                        println("${x.reviewPrUrl}, ${x.comments.size}")
+                    }
+                }
             }
+        }
+    }
 
-            val activity = Activity(x)
-
-
-            activities.add(activity)
-            // commit 카운트와 commit url, total 코드 작성(삭제 수)
-
+    private fun extractReviews(memberGithubUrl: String): List<Review> {
+        open(memberGithubUrl)
+        val reviews = `$`(".octicon.octicon-eye").parent().parent().findAll("a").map {
+            Review(
+                it.innerText().trim(),
+                it.getAttribute("href") ?: throw Exception("맴버 overview에서 월별 pullRequest comment url 주소가 어떻게 없을 수가 있죠?")
+            )
         }
 
-        println("종료")
+        // 리뷰 페이지 이동 & 코멘트 수집
+        reviews.forEachIndexed { idx, review ->
+            open(review.reviewPrUrl)
+
+            // show outdated
+            `$$`("span[title='Label: Outdated']").forEach { outdated ->
+                outdated.click()
+                sleep(1000)
+            }
+
+            // outdated comments 수집
+            val comments = `$$`("h4 strong .author.text-inherit.css-truncate-target").filter { it.isDisplayed }
+                .map { authorElem ->
+                    authorElem.parent().parent().parent()
+                        .findAll("h4 strong a.author")
+                        .filter { it.text.trim() == memberId }
+                        .map { it ->
+                            it.parent().parent().parent()
+                                .find("div.comment-body.markdown-body")
+                                .innerText()
+                                .trim()
+//                                .also {
+//                                    println("$memberId 코멘트 : $it")
+//                                }
+                        }
+                }
+                .flatten()
+                .run {
+                    val lists = `$$`("h3.timeline-comment-header-text.f5.text-normal")
+                        .filter { it.isDisplayed }
+                        .filter { it.find("a.author").text().trim() == memberId }
+                        .map { it.parent().parent().parent().parent().find("td.comment-body p").text().trim() }
+
+                    this + lists
+                }
+
+            reviews[idx].comments = comments
+        }
+
+        return reviews
     }
 
     // pullRequest 집계
@@ -151,23 +163,15 @@ internal class AggregateTest {
         }
 
         // 라인 수정 카운트
-//        commitLogs.forEachIndexed { idx, it ->
-//            if(idx > 1) {
-//                return@forEachIndexed
-//            }
-//
-//            open(it.commitUrl)
-//            val a = `$$`(".blob-code.blob-code-marker-cell").forEach { elem ->
-//                val modified =
-//                    elem.getAttribute("data-code-marker") ?: throw Exception("diff화면에서 코드라인 옆에는 + 또는 - 또는 공백이여야한다.")
-//                if (modified == "+" || modified == "-") {
-//                    it.modifiedLineCount++
-//                }
-//            }
-//
-//            println(it.commitLogTitle + "  라인수 " + it.modifiedLineCount)
-//        }
+        commitLogs.forEachIndexed { idx, it ->
+            open(it.commitUrl)
+            Thread.sleep(2000)
+            executeJavaScript<String>("window.scrollTo(0, document.body.scrollHeight)")
 
+            val plusMarkerCount = `$$`("td.blob-code.blob-code-deletion.blob-code-marker-cell").size
+            val minusMarkerCount = `$$`("td.blob-code.blob-code-addition.blob-code-marker-cell").size
+            it.modifiedLineCount = plusMarkerCount + minusMarkerCount
+        }
 
         return commitLogs
     }
@@ -209,11 +213,9 @@ data class Member(
 
 data class Activity(
     val month: Int,
-    var pr: String = "",
-    var review: String = "",
     var commitLogs: List<CommitLog> = mutableListOf(),
     var pullRequests: List<PullRequest> = mutableListOf(),
-    var reviewUrls: List<String> = mutableListOf()
+    var reviews: List<Review> = mutableListOf()
 )
 
 data class CommitLog(val commitLogTitle: String, val commitUrl: String, var modifiedLineCount: Int = 0)
