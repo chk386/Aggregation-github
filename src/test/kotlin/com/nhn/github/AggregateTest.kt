@@ -1,7 +1,6 @@
 package com.nhn.github
 
 import com.codeborne.selenide.Condition
-import com.codeborne.selenide.Selenide
 import com.codeborne.selenide.Selenide.*
 import com.codeborne.selenide.WebDriverRunner
 import org.junit.jupiter.api.BeforeEach
@@ -17,11 +16,11 @@ internal class AggregateTest {
     private val members = mutableListOf<Member>()
     private val domain = "https://github.nhnent.com/"
 
-    // 조회시작일
+    // 시작월
     private val from = 1
 
-    // 조회종료일
-    private val to = 1
+    // 종료월
+    private val to = 6
 
     // 현재 년도
     private val year = LocalDate.now().year
@@ -40,6 +39,7 @@ internal class AggregateTest {
     fun aggregateGithubActivities() {
         // todo: members를 순회하여 적용
         members.filter { it.company == "JP" }
+            .filter { it.id ==  "keigo-hokonohara"}
             .forEach { member ->
                 for (x in 0 until members.size) {
                     if (member.id == members[x].id) {
@@ -48,7 +48,7 @@ internal class AggregateTest {
                 }
             }
 
-        println("드디어 끝났다.!!")
+        printCsv(members)
     }
 
     private fun getAll(member: Member): List<Activity> {
@@ -60,42 +60,34 @@ internal class AggregateTest {
 
             open(memberGithubUrl)
 
-            if (`$`(".col-lg-9.col-md-8.col-12.float-md-left.pl-md-2").innerText().trim()
+            if (`$`(".col-lg-9.col-md-8.col-12.float-md-left.pl-md-2")
+                    .innerText()
+                    .trim()
                     .startsWith("This user is suspended.")
             ) {
                 return emptyList()
             }
 
             // 맴버의 overview화면에서 본인이 작성한 review url, title정보를 추출한다.
-            Activity(month).also {
+            Activity(month).apply {
                 val extractCommitLogs = extractCommitLogs(memberGithubUrl)
                     .toMutableList()
 
-                it.pullRequests = extractPullRequests(memberGithubUrl)
-                    .also { pullRequest ->
-                        pullRequest.forEach { x ->
-                            println("${x.prTitle} : ${x.prTitle}")
-                        }
-                    }
+                val (prs, logs) = extractPullRequests(memberGithubUrl)
 
-                val (reviews, commitLogs) = extractReviews(member, memberGithubUrl)
-                    .also { review ->
-                        review.first.forEach { x ->
-                            println("${x.reviewPrUrl}, ${x.comments.size}")
-                        }
-                    }
+                pullRequests = prs
+                reviews = extractReviews(member, memberGithubUrl)
 
-                it.reviews = reviews
-                it.commitLogs = extractCommitLogs + commitLogs
+                commitLogs = extractCommitLogs + logs
             }
         }
     }
 
-    private fun extractReviews(member: Member, memberGithubUrl: String): Pair<List<Review>, List<CommitLog>> {
+    private fun extractReviews(member: Member, memberGithubUrl: String): List<Review> {
         open(memberGithubUrl)
 
         if (WebDriverRunner.getWebDriver().findElements(By.cssSelector(".octicon.octicon-eye")).size == 0) {
-            return Pair(emptyList(), emptyList())
+            return emptyList()
         }
 
         val reviews = `$`(".octicon.octicon-eye").parent().parent().findAll("a").map {
@@ -104,8 +96,6 @@ internal class AggregateTest {
                 it.getAttribute("href") ?: throw Exception("맴버 overview에서 월별 pullRequest comment url 주소가 어떻게 없을 수가 있죠?")
             )
         }
-
-        val commitLogs = mutableListOf<CommitLog>()
 
         // 리뷰 페이지 이동 & 코멘트 수집
         reviews.forEachIndexed { idx, review ->
@@ -123,7 +113,7 @@ internal class AggregateTest {
                     authorElem.parent().parent().parent()
                         .findAll("h4 strong a.author")
                         .filter { it.text.trim() == member.id }
-                        .map { it ->
+                        .map {
                             it.parent().parent().parent()
                                 .find("div.comment-body.markdown-body")
                                 .innerText()
@@ -141,45 +131,13 @@ internal class AggregateTest {
                 }
 
             reviews[idx].comments = comments
-
-            // https://github.nhnent.com/commerce-jp/tempocloud/pull/1674  로 이동후
-            // commits탭 클릭
-            val tabNavElem = `$$`(".tabnav-tab.js-pjax-history-navigate")[1]
-            // keigo-hokonohara에서 오류
-            tabNavElem.click()
-            tabNavElem.waitUntil(Condition.attribute("class", "tabnav-tab selected js-pjax-history-navigate"), 1000)
-
-            // commits를 순회하여
-            val map = `$$`("div.table-list-cell p a.message").map {
-                val commitLog = it.attr("aria-label") ?: throw Exception("커밋로그 타이틀은 반드시 재")
-                val url = it.attr("href") ?: throw Exception("url은 반드시 commitLogs")
-
-                Pair(commitLog, url)
-            }.map {
-                val (commitLog, url) = it
-                val hash = url.substringAfterLast("/")
-                val pre = url.substringBefore("pull")
-                val commitUrl = "${pre}commit/$hash"
-
-                open(commitUrl)
-                val modifiedLineCount = getDiffLineCount()
-                back()
-
-                CommitLog(commitLog, commitUrl, modifiedLineCount)
-            }
-
-            commitLogs.addAll(map)
-
-            // https://github.nhnent.com/ncp/admin/pull/91/commits/77c3a94c9ed9ff96231498c687267c4d106abd72 의 커밋로그를 따서
-            // https://github.nhnent.com/ncp/admin/commit/77c3a94c9ed9ff96231498c687267c4d106abd72 커밋로그로 변환
-            // 여기서 부터는 extractCommitLogs와 동일..
         }
 
-        return Pair(reviews, commitLogs)
+        return reviews
     }
 
     // pullRequest 집계
-    private fun extractPullRequests(memberGithubUrl: String): List<PullRequest> {
+    private fun extractPullRequests(memberGithubUrl: String): Pair<List<PullRequest>, List<CommitLog>> {
         open(memberGithubUrl)
 
         val pullRequests = mutableListOf<PullRequest>()
@@ -196,7 +154,43 @@ internal class AggregateTest {
             )
         }
 
-        return pullRequests
+        return Pair(pullRequests, extractCommitLogsInPullRequest(pullRequests))
+    }
+
+    private fun extractCommitLogsInPullRequest(pullRequests: MutableList<PullRequest>): List<CommitLog> {
+        // pullRequest에 있는 커밋 로그 수집
+        return pullRequests.map { pr ->
+            open(pr.prUrl)
+
+            // https://github.nhnent.com/commerce-jp/tempocloud/pull/1674  로 이동후
+            // commits탭 클릭
+            val tabNavElem = `$$`(".tabnav-tab.js-pjax-history-navigate")[1]
+            // keigo-hokonohara에서 오류
+            tabNavElem.click()
+            tabNavElem.waitUntil(Condition.attribute("class", "tabnav-tab selected js-pjax-history-navigate"), 5000)
+
+            // commits를 순회하여
+            `$$`("div.table-list-cell p a.message").map {
+                val commitLog = it.attr("aria-label") ?: throw Exception("커밋로그 타이틀은 반드시 재")
+                val url = it.attr("href") ?: throw Exception("url은 반드시 commitLogs")
+
+                Pair(commitLog, url)
+            }.map {
+                val (commitLog, url) = it
+                val hash = url.substringAfterLast("/")
+                val pre = url.substringBefore("pull")
+                val commitUrl = "${pre}commit/$hash"
+
+                open(commitUrl)
+                val modifiedLineCount = getDiffLineCount()
+                back()
+
+                CommitLog(commitLog, commitUrl, modifiedLineCount)
+            }
+            // https://github.nhnent.com/ncp/admin/pull/91/commits/77c3a94c9ed9ff96231498c687267c4d106abd72 의 커밋로그를 따서
+            // https://github.nhnent.com/ncp/admin/commit/77c3a94c9ed9ff96231498c687267c4d106abd72 커밋로그로 변환
+            // 여기서 부터는 extractCommitLogs와 동일..
+        }.flatten()
     }
 
     // 월별 개발자 commits 목록 화면 진입, commmit 집계
@@ -300,3 +294,4 @@ data class Review(
     val reviewPrUrl: String,
     var comments: List<String> = mutableListOf()
 )
+
