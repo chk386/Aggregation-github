@@ -1,11 +1,10 @@
 package com.nhn.github
 
-import org.junit.jupiter.api.Test
-import kotlin.math.acos
+import java.io.File
+import java.nio.charset.Charset
 
 fun printCsv(members: List<Member>) {
     // 월, 커밋로그수, 코드라인, pr수, 리뷰댓글수
-
     println("아이디\t이름\t회사\t팀\t월\t커밋수\t개발라인수\tpr요청수\t리뷰댓글수")
     members
         .filter { it.activity.isNotEmpty() }
@@ -34,29 +33,38 @@ fun printCsv(members: List<Member>) {
             println("\t\t\t\t총\t${t1}\t${t2}\t${t3}\t${t4}")
         }
 
+    val sb = StringBuilder()
+
     members
         .filter { it.activity.isNotEmpty() }
         .forEach { m ->
-            m.activity.map { activity -> activity.commitLogs }
+            val commitDetails = m.activity.map { activity -> activity.commitLogs }
                 .flatten()
-                .forEach {
-                    println("commit로그\t${it.commitLogTitle.lines().first()}\t${it.commitUrl}\t${it.modifiedLineCount}")
+                .joinToString("\n") {
+                    "commit로그\t${it.commitLogTitle.lines().first()}\t${it.commitUrl}\t${it.modifiedLineCount}"
                 }
 
-            m.activity.map { activity -> activity.pullRequests }
+            val prDetails = m.activity.map { activity -> activity.pullRequests }
                 .flatten()
-                .forEach {
-                    println("pullRequest로그\t${it.prTitle.lines().first()}\t${it.prUrl}")
+                .joinToString("\n") {
+                    "pullRequest로그\t${it.prTitle.lines().first()}\t${it.prUrl}"
                 }
 
+            sb.append(commitDetails).append(prDetails)
 
             m.activity.map { activity -> activity.reviews }
                 .flatten()
                 .forEach { review ->
                     review.comments.forEach {
-                        println("review댓글\t${review.reviewPrTitle.lines().first()}\t${review.reviewPrUrl}\t${it.lines().first()}")
+                        sb.append("review댓글\t${review.reviewPrTitle.lines().first()}\t${review.reviewPrUrl}\t${it.lines().first()}")
                     }
                 }
+
+            val memberDetail = sb.toString()
+            File("${m.name}.csv").writeText(memberDetail, Charset.defaultCharset())
+
+            println(memberDetail)
+            sb.setLength(0)
         }
 
 }

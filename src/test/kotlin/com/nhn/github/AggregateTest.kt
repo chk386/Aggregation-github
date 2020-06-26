@@ -37,9 +37,8 @@ internal class AggregateTest {
 
     @Test
     fun aggregateGithubActivities() {
-        // todo: members를 순회하여 적용
         members.filter { it.company == "JP" }
-            .filter { it.id ==  "keigo-hokonohara"}
+//            .filter { it.id == "keigo-hokonohara" }
             .forEach { member ->
                 for (x in 0 until members.size) {
                     if (member.id == members[x].id) {
@@ -70,15 +69,23 @@ internal class AggregateTest {
 
             // 맴버의 overview화면에서 본인이 작성한 review url, title정보를 추출한다.
             Activity(month).apply {
-                val extractCommitLogs = extractCommitLogs(memberGithubUrl)
-                    .toMutableList()
 
-                val (prs, logs) = extractPullRequests(memberGithubUrl)
+                if(`$`("#js-contribution-activity").text().contains("no activity")) {
+                    pullRequests = emptyList()
+                    reviews = emptyList()
+                    commitLogs = emptyList()
+                }else {
+                    val extractCommitLogs = extractCommitLogs(memberGithubUrl)
+                        .toMutableList()
 
-                pullRequests = prs
-                reviews = extractReviews(member, memberGithubUrl)
+                    val (prs, logs) = extractPullRequests(memberGithubUrl)
 
-                commitLogs = extractCommitLogs + logs
+                    pullRequests = prs
+                    reviews = extractReviews(member, memberGithubUrl)
+                    val allLogs = extractCommitLogs + logs
+
+                    commitLogs = allLogs.map { it.commitUrl }.toSet().map { url -> allLogs.first { it.commitUrl == url } }
+                }
             }
         }
     }
@@ -227,7 +234,7 @@ internal class AggregateTest {
         return `$`(".toc-diff-stats").let {
             val texts = it.findAll("strong")
 
-            val (additionsIdx, deletiionsIdx) =
+            val (additionsIdx, deletionIdx) =
                 if (texts.size == 3) {
                     1 to 2
                 } else {
@@ -235,7 +242,7 @@ internal class AggregateTest {
                 }
 
             val modifiedLineCount = texts[additionsIdx].text.substringBefore(" ").removeComma()
-                .toInt() + texts[deletiionsIdx].text.substringBefore(" ").removeComma().toInt()
+                .toInt() + texts[deletionIdx].text.substringBefore(" ").removeComma().toInt()
 
             modifiedLineCount
         }
