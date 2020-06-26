@@ -174,7 +174,7 @@ internal class AggregateTest {
             val tabNavElem = `$$`(".tabnav-tab.js-pjax-history-navigate")[1]
             // keigo-hokonohara에서 오류
             tabNavElem.click()
-            tabNavElem.waitUntil(Condition.attribute("class", "tabnav-tab selected js-pjax-history-navigate"), 5000)
+            tabNavElem.waitUntil(Condition.attribute("class", "tabnav-tab selected js-pjax-history-navigate"), 30000)
 
             // commits를 순회하여
             `$$`("div.table-list-cell p a.message").map {
