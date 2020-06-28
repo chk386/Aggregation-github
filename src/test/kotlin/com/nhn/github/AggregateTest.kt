@@ -1,6 +1,7 @@
 package com.nhn.github
 
 import com.codeborne.selenide.Condition
+import com.codeborne.selenide.Configuration
 import com.codeborne.selenide.Selenide.*
 import com.codeborne.selenide.WebDriverRunner
 import org.junit.jupiter.api.BeforeEach
@@ -16,7 +17,7 @@ internal class AggregateTest {
     private val members = mutableListOf<Member>()
     private val domain = "https://github.nhnent.com/"
 
-    // 시작월
+    // 시작월ø
     private val from = 1
 
     // 종료월
@@ -27,6 +28,7 @@ internal class AggregateTest {
 
     @BeforeEach
     fun open() {
+        Configuration.headless = true
         open("$domain/orgs/ncp/people")
         `$`("#login_field").value = "haekyu.cho"
         `$`("#password").value = "Cdr0m38^"
@@ -36,18 +38,25 @@ internal class AggregateTest {
     }
 
     @Test
-    fun aggregateGithubActivities() {
+    fun a() {
+        extractCommitLogs(listOf("commerce-jp")).also {
+            println(it)
+        }
+    }
+
+    @Test
+    fun aggregateGitthubActivities() {
+        println("아이디\t이름\t회사\t팀\t월\t커밋수\t개발라인수\tpr요청수\t리뷰댓글수")
+
         members.filter { it.company == "JP" }
-//            .filter { it.id == "keigo-hokonohara" }
             .forEach { member ->
                 for (x in 0 until members.size) {
                     if (member.id == members[x].id) {
                         members[x].activity = getAll(member)
+                        printCsv(members[x])
                     }
                 }
             }
-
-        printCsv(members)
     }
 
     private fun getAll(member: Member): List<Activity> {
@@ -70,21 +79,15 @@ internal class AggregateTest {
             // 맴버의 overview화면에서 본인이 작성한 review url, title정보를 추출한다.
             Activity(month).apply {
 
-                if(`$`("#js-contribution-activity").text().contains("no activity")) {
+                if (`$`("#js-contribution-activity").text().contains("no activity")) {
                     pullRequests = emptyList()
                     reviews = emptyList()
                     commitLogs = emptyList()
-                }else {
-                    val extractCommitLogs = extractCommitLogs(memberGithubUrl)
-                        .toMutableList()
-
-                    val (prs, logs) = extractPullRequests(memberGithubUrl)
+                } else {
+                    val prs = extractPullRequests(memberGithubUrl)
 
                     pullRequests = prs
                     reviews = extractReviews(member, memberGithubUrl)
-                    val allLogs = extractCommitLogs + logs
-
-                    commitLogs = allLogs.map { it.commitUrl }.toSet().map { url -> allLogs.first { it.commitUrl == url } }
                 }
             }
         }
@@ -144,7 +147,7 @@ internal class AggregateTest {
     }
 
     // pullRequest 집계
-    private fun extractPullRequests(memberGithubUrl: String): Pair<List<PullRequest>, List<CommitLog>> {
+    private fun extractPullRequests(memberGithubUrl: String): List<PullRequest> {
         open(memberGithubUrl)
 
         val pullRequests = mutableListOf<PullRequest>()
@@ -161,10 +164,14 @@ internal class AggregateTest {
             )
         }
 
-        return Pair(pullRequests, extractCommitLogsInPullRequest(pullRequests))
+        return pullRequests
     }
 
-    private fun extractCommitLogsInPullRequest(pullRequests: MutableList<PullRequest>): List<CommitLog> {
+    @Deprecated(message = "커밋로그는 repository에 전체 commit탭에서 추출하자")
+    private fun extractCommitLogsInPullRequest(
+        pullRequests: MutableList<PullRequest>,
+        memberId: String
+    ): List<CommitLog> {
         // pullRequest에 있는 커밋 로그 수집
         return pullRequests.map { pr ->
             open(pr.prUrl)
@@ -177,7 +184,12 @@ internal class AggregateTest {
             tabNavElem.waitUntil(Condition.attribute("class", "tabnav-tab selected js-pjax-history-navigate"), 30000)
 
             // commits를 순회하여
-            `$$`("div.table-list-cell p a.message").map {
+//            `$$`("div.table-list-cell p a.message")
+            `$$`("div.table-list-cell:not(.commit-links-cell)").filter {
+                it.find("div.commit-meta div .commit-author").text().startsWith(memberId)
+            }.map {
+                it.find("p a.message")
+            }.map {
                 val commitLog = it.attr("aria-label") ?: throw Exception("커밋로그 타이틀은 반드시 재")
                 val url = it.attr("href") ?: throw Exception("url은 반드시 commitLogs")
 
@@ -249,9 +261,10 @@ internal class AggregateTest {
     }
 
     // 개발자의 월별 커밋 github 화면 url추출
+    @Deprecated(message = "이건 여기서 안쓸듯?")
     private fun extractCommitHrefs(): List<String> {
         return `$$`("li[class^=ml-0]").map {
-            it.find(By.className("f6")).getAttribute("href") ?: throw Exception("commit 링크 오류")
+            it.find(".f6").getAttribute("href") ?: throw Exception("commit 링크 오류")
         }
     }
 
