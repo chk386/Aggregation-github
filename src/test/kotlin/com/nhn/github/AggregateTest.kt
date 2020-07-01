@@ -7,6 +7,8 @@ import com.codeborne.selenide.WebDriverRunner
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.openqa.selenium.By
+import java.io.File
+import java.nio.charset.Charset
 import java.time.LocalDate
 
 /**
@@ -16,6 +18,7 @@ import java.time.LocalDate
 internal class AggregateTest {
     private val members = mutableListOf<Member>()
     private val domain = "https://github.nhnent.com/"
+    private val org = "commerce-jp"
 
     // 시작월ø
     private val from = 1
@@ -38,14 +41,26 @@ internal class AggregateTest {
     }
 
     @Test
-    fun a() {
-        extractCommitLogs(listOf("commerce-jp")).also {
-            println(it)
-        }
+    fun `커밋로그 집계`() {
+        val commitLogs = extractCommitLogs(listOf(org)).sortedBy { it.memberId }
+
+        // comit 상세 페이지로 이동하여 x additions를 카운트와 changedFiles를 추출하자
+        val logs = fetchCodeLines(commitLogs)
+        val sb = StringBuilder()
+
+        sb.append("아이디\t월\t제목\turl\t작성라인수\t변경파일수\n")
+
+        val body = logs.map {
+            "${it.memberId}\t${it.month}\t${it.commitLogTitle}\t${it.commitUrl}\t${it.modifiedLineCount}\t${it.changedFilesCount}"
+        }.joinToString("\n")
+
+        sb.append(body)
+
+        File("/Users/haekyu.cho/Desktop/$org.csv").writeText(sb.toString(), Charset.defaultCharset())
     }
 
     @Test
-    fun aggregateGitthubActivities() {
+    fun `activity 집계`() {
         println("아이디\t이름\t회사\t팀\t월\t커밋수\t개발라인수\tpr요청수\t리뷰댓글수")
 
         members.filter { it.company == "JP" }

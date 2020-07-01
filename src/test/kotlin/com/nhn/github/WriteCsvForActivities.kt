@@ -62,6 +62,5 @@ fun printCsv(member: Member) {
         File("/Users/haekyu.cho/Desktop/${member.id}.csv").writeText(memberDetail, Charset.defaultCharset())
     }
 
-//    println(memberDetail)
     sb.setLength(0)
 }
