@@ -2,14 +2,18 @@ package com.nhn.github
 
 import com.codeborne.selenide.Condition
 import com.codeborne.selenide.Selenide.*
+import com.vladsch.kotlin.jdbc.sqlQuery
+import com.vladsch.kotlin.jdbc.usingDefault
+import java.io.ByteArrayOutputStream
+import java.nio.charset.Charset
+import java.nio.charset.Charset.*
+import java.util.zip.Deflater
 
 /**
  * @author haekyu cho
  */
 
-fun extractCommitLogs(orgs: List<String>): List<CommitDetailLog> {
-    val commitDetailLogs = mutableListOf<CommitDetailLog>()
-
+fun extractCommitLogs(orgs: List<String>): List<Pair<Int, String>> {
     return orgs.map { org ->
         val url = "https://github.nhnent.com/$org"
         open(url)
@@ -20,7 +24,10 @@ fun extractCommitLogs(orgs: List<String>): List<CommitDetailLog> {
             it.find("div div h3 a").attr("href") ?: throw Exception("없으면 안됨")
         }
     }.flatten()
+        .filter { !it.contains("tempocloud") }
         .map {
+            val commitNos = mutableListOf<Pair<Int, String>>()
+
             open(it)
             `$`(".commits a").click()
             `$`("#branch-select-menu").waitUntil(Condition.appear, 5000)
@@ -31,15 +38,37 @@ fun extractCommitLogs(orgs: List<String>): List<CommitDetailLog> {
                 }.forEach { elem ->
                     val month = toMonth(elem.text)
 
-                    elem.sibling(0).findAll("li.commit").map { li ->
-                        val commitDiv = li.find("div.table-list-cell")
-                        val commitDetail = commitDiv.find("p.commit-title a.message")
-                        val commitTitle =
-                            (commitDetail.attr("aria-label") ?: throw Exception("없으면 안된다.!")).substringBefore('\n')
-                        val commitUrl = commitDetail.attr("href") ?: throw Exception("url이 어떻게 없을수가 있나?")
-                        val memberId = commitDiv.find("a.commit-author, span.commit-author").text
+                    if (month <= 7) {
+                        elem.sibling(0).findAll("li.commit").map { li ->
+                            val commitDiv = li.find("div.table-list-cell")
+                            val commitDetail = commitDiv.find("p.commit-title a.message")
+                            val commitTitle =
+                                (commitDetail.attr("aria-label") ?: throw Exception("없으면 안된다.!")).substringBefore('\n')
+                            val commitUrl = commitDetail.attr("href") ?: throw Exception("url이 어떻게 없을수가 있나?")
+                            val author = commitDiv.find("a.commit-author, span.commit-author").text
 
-                        commitDetailLogs.add(CommitDetailLog(memberId, month, commitTitle, commitUrl))
+                            usingDefault { session ->
+                                session.transaction { tx ->
+                                    with(commitNos) {
+                                        val commitNo = tx.updateGetId(
+                                            sqlQuery(
+                                                """
+                                                insert into commit_log(author, month, url, title, modified_line_count, deleted_line_count, file_changed_count, file_changed_name_compressed)
+                                                values(?, ?, ?, ?, ?, ?, ?)
+                                                """.trimIndent(), author, month, commitUrl, commitTitle, 0, 0, 0, ""
+                                            )
+                                        ) ?: 0
+
+                                        add(commitNo to commitUrl)
+                                    }
+                                }
+                            }
+
+
+//                            if (!commitTitle.startsWith("Merge branch")) {
+//                                commitDetailLogs.add(CommitDetailLog(memberId, month, commitTitle, commitUrl))
+//                            }
+                        }
                     }
                 }
 
@@ -55,20 +84,63 @@ fun extractCommitLogs(orgs: List<String>): List<CommitDetailLog> {
                 }
             }
 
-            return commitDetailLogs
+            return commitNos
         }
 }
 
-fun fetchCodeLines(commitLogs: List<CommitDetailLog>): List<CommitDetailLog> {
-    return commitLogs.map {
-        open(it.commitUrl)
+fun fetchCodeLines(commitNosWithUrl: List<Pair<Int, String>>) {
+    commitNosWithUrl.forEach { (no, url) ->
+        open(url)
         `$`(".toc-diff-stats").waitUntil(Condition.appear, 5000)
 
-        val elem = `$`("button.btn-link.js-details-target")
-        val changedFileCount = elem.text.substringBefore(" ").toInt()
-        val additions = elem.sibling(0).text.substringBefore(" ").toInt()
+        val elem = `$`("button.btn-link.js-details-target,div.toc-diff-stats strong")
+        val changedFileCount = elem.text.substringBefore(" ").removeComma().toInt()
+        val additions = elem.sibling(0).text.substringBefore(" ").removeComma().toInt()
+        val deletions = elem.sibling(0).text.substringBefore(" ").removeComma().toInt()
 
-        it.copy(changedFilesCount = changedFileCount, modifiedLineCount = additions)
+        `$`(".toc-diff-stats button.btn-link").click()
+        val fileNames = `$$`("#toc ol.content.collapse.js-transitionable li > a").joinToString {
+            it.text
+        }
+
+        // update하자
+        usingDefault { session ->
+            session.transaction { tx ->
+                tx.update(
+                    sqlQuery(
+                        """
+                        update commit_log
+                           set modified_line_count = ?
+                             , deleted_line_count = ?
+                             , file_changed_count = ?
+                             , file_changed_name_compressed = ?
+                         where no = ?    
+                        """.trimIndent(), additions, deletions, changedFileCount, compress(fileNames), no
+                    )
+                )
+            }
+        }
+    }
+}
+
+private fun compress(fileNames: String): String {
+    val toByteArray = fileNames.toByteArray(defaultCharset())
+    val buf = ByteArray(1024)
+    val baos = ByteArrayOutputStream(toByteArray.size)
+
+    Deflater().apply {
+        setLevel(Deflater.BEST_COMPRESSION)
+        setInput(toByteArray)
+        finish()
+    }.run {
+        while (!finished()) {
+            val count = deflate(buf)
+            baos.write(buf, 0, count)
+        }
+
+        baos.close()
+
+        return baos.toByteArray().toHex()
     }
 }
 
@@ -78,18 +150,39 @@ data class CommitDetailLog(
     val commitLogTitle: String,
     val commitUrl: String,
     var modifiedLineCount: Int = 0,
+    var deletedLineCount: Int = 0,
     var changedFilesCount: Int = 0
-)
+) {
+    fun `is`(newCommitLogs: List<CommitDetailLog>): Boolean {
+        if (newCommitLogs.isEmpty()) {
+            return false
+        }
+
+        val newCommitLog = newCommitLogs.last()
+
+        return this.memberId == newCommitLog.memberId &&
+                this.modifiedLineCount == newCommitLog.modifiedLineCount &&
+                this.deletedLineCount == newCommitLog.deletedLineCount &&
+                this.changedFilesCount == newCommitLog.changedFilesCount
+    }
+}
 
 private fun toMonth(txt: String): Int {
-    val lowercase = txt.toLowerCase()
-    return when {
-        lowercase.contains("jun") -> 6
-        lowercase.contains("may") -> 5
-        lowercase.contains("apr") -> 4
-        lowercase.contains("mar") -> 3
-        lowercase.contains("feb") -> 2
-        lowercase.contains("jan") -> 1
-        else -> throw Exception("일단 1-6월까지")
+    return txt.toLowerCase().let {
+        when {
+            it.contains("aug") -> 8
+            it.contains("jul") -> 7
+            it.contains("jun") -> 6
+            it.contains("may") -> 5
+            it.contains("apr") -> 4
+            it.contains("mar") -> 3
+            it.contains("feb") -> 2
+            it.contains("jan") -> 1
+            else -> throw Exception("일단 1-6월까지")
+        }
     }
+}
+
+fun ByteArray.toHex(): String {
+    return joinToString("") { "%02x".format(it) }
 }

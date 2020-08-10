@@ -16,6 +16,11 @@ dependencies {
     testImplementation("com.codeborne", "selenide", "5.12.2")
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.+")
     testImplementation("org.junit.jupiter:junit-jupiter-params:5.+")
+    testImplementation("com.vladsch.kotlin-jdbc:kotlin-jdbc:0.5.0")
+    testImplementation("com.zaxxer:HikariCP:3.4.5")
+    testImplementation("mysql:mysql-connector-java:8.0.21")
+
+
     // brew install ffmpeg 실행하기전에 ffmpeg 코덱 설치 필수
 //    testImplementation("com.automation-remarks", "video-recorder-junit5", "1.+")
 
