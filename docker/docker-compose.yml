@@ -7,7 +7,7 @@ services:
     command: --default-authentication-plugin=mysql_native_password
     restart: always
     volumes:
-      - ~/docker/mysql/data:/var/lib/mysql  
+      - ~/IdeaProjects/aggregation-github/docker/mysql/data:/var/lib/mysql
     environment:
       MYSQL_ROOT_PASSWORD: Cdr0m38^
     ports:

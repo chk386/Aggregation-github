@@ -1,6 +1,9 @@
+mysql -u root -p
 
-drop table commit_log;
+create user chk386@'%' identified by 'Cdr0m38^';
+GRANT ALL PRIVILEGES ON test.* TO 'chk386'@'%';
 
+drop table commit_log
 create table commit_log
 (
     no int auto_increment

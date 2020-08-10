@@ -46,13 +46,13 @@ internal class AggregateTest {
 //        fetchAllMembers()
     }
 
-    @Test
-    fun a() {
-        val listOf =
-            listOf(1 to "https://github.nhnent.com/commerce-jp/tempocloud/commit/c7cad7e5b037458f53ca0e3fb2ee281447153ccb")
-
-        fetchCodeLines(listOf)
-    }
+//    @Test
+//    fun a() {
+//        val listOf =
+//            listOf(1 to "https://github.nhnent.com/commerce-jp/tempocloud/commit/c7cad7e5b037458f53ca0e3fb2ee281447153ccb")
+//
+//        fetchCodeLines(listOf)
+//    }
 
     @Test
     fun `커밋로그 집계`() {

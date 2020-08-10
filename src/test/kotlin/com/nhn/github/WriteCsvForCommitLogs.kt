@@ -5,8 +5,7 @@ import com.codeborne.selenide.Selenide.*
 import com.vladsch.kotlin.jdbc.sqlQuery
 import com.vladsch.kotlin.jdbc.usingDefault
 import java.io.ByteArrayOutputStream
-import java.nio.charset.Charset
-import java.nio.charset.Charset.*
+import java.nio.charset.Charset.defaultCharset
 import java.util.zip.Deflater
 
 /**
@@ -24,7 +23,7 @@ fun extractCommitLogs(orgs: List<String>): List<Pair<Int, String>> {
             it.find("div div h3 a").attr("href") ?: throw Exception("없으면 안됨")
         }
     }.flatten()
-        .filter { !it.contains("tempocloud") }
+        .filter { it.contains("tempocloud")}
         .map {
             val commitNos = mutableListOf<Pair<Int, String>>()
 
@@ -41,29 +40,32 @@ fun extractCommitLogs(orgs: List<String>): List<Pair<Int, String>> {
                     if (month <= 7) {
                         elem.sibling(0).findAll("li.commit").map { li ->
                             val commitDiv = li.find("div.table-list-cell")
-                            val commitDetail = commitDiv.find("p.commit-title a.message")
-                            val commitTitle =
-                                (commitDetail.attr("aria-label") ?: throw Exception("없으면 안된다.!")).substringBefore('\n')
-                            val commitUrl = commitDetail.attr("href") ?: throw Exception("url이 어떻게 없을수가 있나?")
-                            val author = commitDiv.find("a.commit-author, span.commit-author").text
+                            val commitDetail = commitDiv.find("p.commit-title a")
+                            try {
+                                val commitTitle =
+                                    (commitDetail.attr("aria-label") ?: throw Exception("없으면 안된다.!")).substringBefore('\n')
+                                val commitUrl = commitDetail.attr("href") ?: throw Exception("url이 어떻게 없을수가 있나?")
+                                val author = commitDiv.find("a.commit-author, span.commit-author").text
 
-                            usingDefault { session ->
-                                session.transaction { tx ->
-                                    with(commitNos) {
-                                        val commitNo = tx.updateGetId(
-                                            sqlQuery(
-                                                """
+                                usingDefault { session ->
+                                    session.transaction { tx ->
+                                        with(commitNos) {
+                                            val commitNo = tx.updateGetId(
+                                                sqlQuery(
+                                                    """
                                                 insert into commit_log(author, month, url, title, modified_line_count, deleted_line_count, file_changed_count, file_changed_name_compressed)
-                                                values(?, ?, ?, ?, ?, ?, ?)
+                                                values(?, ?, ?, ?, ?, ?, ?, substring(?, 1, 600))
                                                 """.trimIndent(), author, month, commitUrl, commitTitle, 0, 0, 0, ""
-                                            )
-                                        ) ?: 0
+                                                )
+                                            ) ?: 0
 
-                                        add(commitNo to commitUrl)
+                                            add(commitNo to commitUrl)
+                                        }
                                     }
                                 }
+                            }catch(e: Exception) {
+                                println(commitDetail.attr("href") ?: throw Exception("url이 어떻게 없을수가 있나?"))
                             }
-
 
 //                            if (!commitTitle.startsWith("Merge branch")) {
 //                                commitDetailLogs.add(CommitDetailLog(memberId, month, commitTitle, commitUrl))
@@ -84,8 +86,8 @@ fun extractCommitLogs(orgs: List<String>): List<Pair<Int, String>> {
                 }
             }
 
-            return commitNos
-        }
+            commitNos
+        }.flatten()
 }
 
 fun fetchCodeLines(commitNosWithUrl: List<Pair<Int, String>>) {
@@ -96,7 +98,7 @@ fun fetchCodeLines(commitNosWithUrl: List<Pair<Int, String>>) {
         val elem = `$`("button.btn-link.js-details-target,div.toc-diff-stats strong")
         val changedFileCount = elem.text.substringBefore(" ").removeComma().toInt()
         val additions = elem.sibling(0).text.substringBefore(" ").removeComma().toInt()
-        val deletions = elem.sibling(0).text.substringBefore(" ").removeComma().toInt()
+        val deletions = elem.sibling(1).text.substringBefore(" ").removeComma().toInt()
 
         `$`(".toc-diff-stats button.btn-link").click()
         val fileNames = `$$`("#toc ol.content.collapse.js-transitionable li > a").joinToString {
@@ -113,7 +115,7 @@ fun fetchCodeLines(commitNosWithUrl: List<Pair<Int, String>>) {
                            set modified_line_count = ?
                              , deleted_line_count = ?
                              , file_changed_count = ?
-                             , file_changed_name_compressed = ?
+                             , file_changed_name_compressed = substring(?, 1, 600)
                          where no = ?    
                         """.trimIndent(), additions, deletions, changedFileCount, compress(fileNames), no
                     )
