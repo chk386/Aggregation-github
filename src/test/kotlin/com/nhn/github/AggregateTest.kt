@@ -10,8 +10,6 @@ import com.vladsch.kotlin.jdbc.usingDefault
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.openqa.selenium.By
-import java.io.File
-import java.nio.charset.Charset
 import java.time.LocalDate
 
 /**
@@ -37,7 +35,7 @@ internal class AggregateTest {
         HikariCP.default("jdbc:mysql://localhost:3306/test", "chk386", "Cdr0m38^")
         SessionImpl.defaultDataSource = { HikariCP.dataSource() }
 
-//        Configuration.headless = true
+        Configuration.headless = true
         open("$domain/orgs/ncp/people")
         `$`("#login_field").value = "haekyu.cho"
         `$`("#password").value = "Cdr0m38^"
@@ -55,12 +53,25 @@ internal class AggregateTest {
 //    }
 
     @Test
-    fun `커밋로그 집계`() {
+    fun `커밋로그 추출 및 저장`() {
         val commitNosWithUrl = extractCommitLogs(listOf(org))
-        fetchCodeLines(commitNosWithUrl)
 
+        println("끝")
+    }
 
-        // comit 상세 페이지로 이동하여 x additions를 카운트와 changedFiles를 추출하자
+    @Test
+    fun `커밋의 상세 정보 업데이트`() {
+        usingDefault { session ->
+
+//            https://github.nhnent.com/commerce-jp/tempocloud/commit/bb01adc4eb9185d3ef5759251654031abc8caa93
+
+            val list =
+                session.list(sqlQuery("select no, url from commit_log where file_changed_count = 0 and file_changed_name_compressed = ''")) {
+                    it.int(1) to it.string(2)
+                }
+
+            fetchCodeLines(list)
+        }
     }
 
     @Test
@@ -320,12 +331,12 @@ data class Member(
 
 data class Activity(
     val month: Int,
-    var commitLogs: List<CommitLog> = mutableListOf(),
+    var commitLogs: List<CommitLog2> = mutableListOf(),
     var pullRequests: List<PullRequest> = mutableListOf(),
     var reviews: List<Review> = mutableListOf()
 )
 
-data class CommitLog(val commitLogTitle: String, val commitUrl: String, var modifiedLineCount: Int = 0)
+data class CommitLog2(val commitLogTitle: String, val commitUrl: String, var modifiedLineCount: Int = 0)
 data class PullRequest(val prTitle: String, val prUrl: String)
 data class Review(
     val reviewPrTitle: String,

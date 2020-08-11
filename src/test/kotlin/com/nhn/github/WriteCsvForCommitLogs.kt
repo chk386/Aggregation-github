@@ -2,8 +2,10 @@ package com.nhn.github
 
 import com.codeborne.selenide.Condition
 import com.codeborne.selenide.Selenide.*
+import com.codeborne.selenide.WebDriverRunner.getWebDriver
 import com.vladsch.kotlin.jdbc.sqlQuery
 import com.vladsch.kotlin.jdbc.usingDefault
+import org.openqa.selenium.By.cssSelector
 import java.io.ByteArrayOutputStream
 import java.nio.charset.Charset.defaultCharset
 import java.util.zip.Deflater
@@ -13,7 +15,7 @@ import java.util.zip.Deflater
  */
 
 fun extractCommitLogs(orgs: List<String>): List<Pair<Int, String>> {
-    return orgs.map { org ->
+    return orgs.asSequence().map { org ->
         val url = "https://github.nhnent.com/$org"
         open(url)
 
@@ -23,7 +25,7 @@ fun extractCommitLogs(orgs: List<String>): List<Pair<Int, String>> {
             it.find("div div h3 a").attr("href") ?: throw Exception("없으면 안됨")
         }
     }.flatten()
-        .filter { it.contains("tempocloud")}
+        .filter { it.contains("tempocloud") }
         .map {
             val commitNos = mutableListOf<Pair<Int, String>>()
 
@@ -43,7 +45,9 @@ fun extractCommitLogs(orgs: List<String>): List<Pair<Int, String>> {
                             val commitDetail = commitDiv.find("p.commit-title a")
                             try {
                                 val commitTitle =
-                                    (commitDetail.attr("aria-label") ?: throw Exception("없으면 안된다.!")).substringBefore('\n')
+                                    (commitDetail.attr("aria-label") ?: throw Exception("없으면 안된다.!")).substringBefore(
+                                        '\n'
+                                    )
                                 val commitUrl = commitDetail.attr("href") ?: throw Exception("url이 어떻게 없을수가 있나?")
                                 val author = commitDiv.find("a.commit-author, span.commit-author").text
 
@@ -63,7 +67,7 @@ fun extractCommitLogs(orgs: List<String>): List<Pair<Int, String>> {
                                         }
                                     }
                                 }
-                            }catch(e: Exception) {
+                            } catch (e: Exception) {
                                 println(commitDetail.attr("href") ?: throw Exception("url이 어떻게 없을수가 있나?"))
                             }
 
@@ -87,7 +91,7 @@ fun extractCommitLogs(orgs: List<String>): List<Pair<Int, String>> {
             }
 
             commitNos
-        }.flatten()
+        }.flatten().toList()
 }
 
 fun fetchCodeLines(commitNosWithUrl: List<Pair<Int, String>>) {
@@ -100,9 +104,11 @@ fun fetchCodeLines(commitNosWithUrl: List<Pair<Int, String>>) {
         val additions = elem.sibling(0).text.substringBefore(" ").removeComma().toInt()
         val deletions = elem.sibling(1).text.substringBefore(" ").removeComma().toInt()
 
-        `$`(".toc-diff-stats button.btn-link").click()
-        val fileNames = `$$`("#toc ol.content.collapse.js-transitionable li > a").joinToString {
-            it.text
+        val fileNames = if (getWebDriver().findElements(cssSelector(".toc-diff-stats button.btn-link")).size == 0) {
+            ""
+        } else {
+            `$`(".toc-diff-stats button.btn-link").click()
+            `$$`("#toc ol.content.collapse.js-transitionable li > a").joinToString { it.text }
         }
 
         // update하자
