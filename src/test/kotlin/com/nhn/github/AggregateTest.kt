@@ -35,7 +35,7 @@ internal class AggregateTest {
         HikariCP.default("jdbc:mysql://localhost:3306/test", "chk386", "Cdr0m38^")
         SessionImpl.defaultDataSource = { HikariCP.dataSource() }
 
-        Configuration.headless = true
+        Configuration.headless = false
         open("$domain/orgs/ncp/people")
         `$`("#login_field").value = "haekyu.cho"
         `$`("#password").value = "Cdr0m38^"

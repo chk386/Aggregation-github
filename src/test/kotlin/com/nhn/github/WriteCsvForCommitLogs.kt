@@ -20,12 +20,13 @@ fun extractCommitLogs(orgs: List<String>): List<Pair<Int, String>> {
         open(url)
 
         `$$`(".org-repos.repo-list ul li").filter {
-            !it.find("relative-time").text.contains("2019")
+            !it.find("relative-time").text.endsWith("2019")
         }.map {
             it.find("div div h3 a").attr("href") ?: throw Exception("없으면 안됨")
         }
     }.flatten()
-        .filter { it.contains("tempocloud") }
+//        .filter { !it.contains("tempocloud") }
+        .filter { !it.contains("japan-nhngodo-shopby") }
         .map {
             val commitNos = mutableListOf<Pair<Int, String>>()
 
@@ -35,19 +36,32 @@ fun extractCommitLogs(orgs: List<String>): List<Pair<Int, String>> {
 
             while (true) {
                 `$$`(".commit-group-title").filter { elem ->
-                    elem.text.contains("2020")
+                    !elem.text.endsWith("2019")
                 }.forEach { elem ->
                     val month = toMonth(elem.text)
 
                     if (month <= 7) {
                         elem.sibling(0).findAll("li.commit").map { li ->
                             val commitDiv = li.find("div.table-list-cell")
-                            val commitDetail = commitDiv.find("p.commit-title a")
+                            val findAll = commitDiv.findAll("p.commit-title a")
+                            val commitDetail = if (findAll[0].attr("aria-label") == null) {
+                                if (findAll.size == 1) {
+                                    findAll[0]
+                                } else {
+                                    findAll[1]
+                                }
+                            } else {
+                                findAll[0]
+                            }
+
                             try {
                                 val commitTitle =
-                                    (commitDetail.attr("aria-label") ?: throw Exception("없으면 안된다.!")).substringBefore(
-                                        '\n'
-                                    )
+                                    if (commitDetail.attr("aria-label") == null) {
+                                        commitDetail.text
+                                    } else {
+                                        commitDetail.attr("aria-label")!!.substringBefore('\n')
+                                    }
+
                                 val commitUrl = commitDetail.attr("href") ?: throw Exception("url이 어떻게 없을수가 있나?")
                                 val author = commitDiv.find("a.commit-author, span.commit-author").text
 
@@ -95,7 +109,9 @@ fun extractCommitLogs(orgs: List<String>): List<Pair<Int, String>> {
 }
 
 fun fetchCodeLines(commitNosWithUrl: List<Pair<Int, String>>) {
-    commitNosWithUrl.forEach { (no, url) ->
+    commitNosWithUrl.filter {
+        !it.second.startsWith("https://nhnent.dooray.com")
+    }.forEach { (no, url) ->
         open(url)
         `$`(".toc-diff-stats").waitUntil(Condition.appear, 5000)
 
